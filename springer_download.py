@@ -35,20 +35,21 @@ def main(argv):
         error("You have to install iconv.")
 
     try:
-        opts, args = getopt.getopt(argv, "hl:c:n", ["help", "link=", "content=", "no-merge"])
+        opts, args = getopt.getopt(argv, "hl:c:j:n", ["help", "link=", "content=", "journal", "no-merge"])
     except getopt.GetoptError:
         error("Could not parse command line arguments.")
 
     link = ""
     hash = ""
     merge = True
+    journal = False
 
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             usage()
             sys.exit()
         elif opt in ("-c", "--content"):
-            if link != "":
+            if link != "":     #HL: This is dead code, because the variable link isn't called!
                 usage()
                 error("-c and -l arguments are mutually exclusive")
             hash = arg
@@ -61,6 +62,25 @@ def main(argv):
                 usage()
                 error("Bad link given. See example link.")
             hash = match.group("hash")
+        elif opt in ("-j", "--jornal"):
+            #HL: Check if only -j is called
+            if hash != "":
+                usage()
+                error("-c, -j and -l arguments are mutually exclusive")
+            #HL: Journal parsing
+            match = re.match("(https?://)?(www\.)?springer(link)?.(com|de)/(content)/(?P<hash>[a-z0-9\-]+/[0-9]+/[0-9]+)/?(\?[^/]*)?$", arg)
+            if not match:
+                usage()
+                error("Bad journal-link given. See example link.")
+            hash = match.group("hash")
+            match2 = re.match("([a-z0-9\-]+)/([0-9]+)/([0-9]+)",hash)
+            Vol = int(match2.group(2))
+            Nr = int(match2.group(3))
+            merge = False        #HL: There is no need to merge different journal artikels
+            journal = True
+            #HL: only for testing
+            #print "Jorunal-Hash:" + hash + " Vol." + Vol + " Nr." + Nr
+            #sys.exit()           
         elif opt in ("-n", "--no-merge"):
             merge = False
 
@@ -72,7 +92,7 @@ def main(argv):
         error("You have to install pdftk (http://www.accesspdf.com/pdftk/) or stapler (http://github.com/hellerbarde/stapler).")
 
     baseLink = "http://springerlink.com/content/" + hash + "/"
-    link = baseLink + "contents/"
+    link = baseLink + ("" if journal else "contents/")
     chapters = list()
     loader = SpringerURLopener();
     curDir = os.getcwd()
@@ -180,7 +200,10 @@ def main(argv):
             chapterLink = baseLink + chapterLink
         chapterLink = re.sub("/[^/]+/\.\.", "", chapterLink)
         print "downloading chapter %d/%d" % (i, len(chapters))
-        localFile, mimeType = geturl(chapterLink, "%d.pdf" % i)
+        if journal and not merge:
+            localFile, mimeType = geturl(chapterLink, "%s_Vol.%04d_Nr.%03d_%d.pdf" % (bookTitle,Vol,Nr,i))
+        else:
+            localFile, mimeType = geturl(chapterLink, "%d.pdf" % i)
 
         if mimeType.gettype() != "application/pdf":
             os.chdir(curDir)
@@ -224,6 +247,7 @@ Options:
   -h, --help              Display this usage message
   -l LINK, --link=LINK    defines the link of the book you intend to download
   -c ISBN, --content=ISBN builds the link from a given ISBN (see below)
+  -j LINK, --journal=LINK defines the link of a journal (automatic no-merge)
 
   -n, --no-merge          Only download the chapters but don't merge them into a single PDF.
 
